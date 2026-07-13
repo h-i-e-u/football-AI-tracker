@@ -69,7 +69,7 @@ else:
                     
                     # Chuyển hệ màu để hiển thị chuẩn trên giao diện Web
                     annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                    frame_window.image(annotated_frame_rgb, channels="RGB", use_container_width=True)
+                    frame_window.image(annotated_frame_rgb, channels="RGB", width="stretch")
                 
                 cap.release()
                 st.success("🎉 Đã phát hết video!")
