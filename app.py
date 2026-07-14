@@ -3,6 +3,7 @@ import cv2
 from ultralytics import YOLO
 import tempfile
 import os
+import supervision as sv
 
 # Configure the Streamlit page
 st.set_page_config(page_title="Football Tracking App", layout="wide", page_icon="⚽")
@@ -47,7 +48,7 @@ else:
         tfile.write(uploaded_file.read())
         
         # Kiểm tra file cấu hình ByteTrack tùy chỉnh (đã tạo ở bước trước)
-        tracker_config = "custom_bytetrack.yaml" if os.path.exists("custom_bytetrack.yaml") else "bytetrack.yaml"
+        tracker_config = "fasttrack.yaml"
 
         # --- XỬ LÝ CHẾ ĐỘ 1: WATCH LIVE STREAM ---
         if "Mode 1" in run_mode:
@@ -58,19 +59,70 @@ else:
                 # Tạo khung trống để liên tục "bắn" ảnh vào
                 frame_window = st.image([]) 
                 
+                # while cap.isOpened():
+                #     success, frame = cap.read()
+                #     if not success:
+                #         break
+                    
+                #     # Chạy ByteTrack trực tiếp trên khung hình
+                #     results = model.track(frame, persist=True, imgsz=img_size, conf=conf_threshold, tracker=tracker_config, verbose=False)
+                #     annotated_frame = results[0].plot()
+                    
+                #     # Chuyển hệ màu để hiển thị chuẩn trên giao diện Web
+                #     annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                #     frame_window.image(annotated_frame_rgb, channels="RGB", width="stretch")
+
+
+                # 1. Khởi tạo các annotator ngoài vòng lặp (để tối ưu hiệu năng)
+                box_annotator = sv.EllipseAnnotator()
+                label_annotator = sv.LabelAnnotator(text_thickness=2, text_scale=0.3)
+                trace_annotator = sv.TraceAnnotator()  # Vẽ đường vết di chuyển của vật thể
+
                 while cap.isOpened():
                     success, frame = cap.read()
                     if not success:
                         break
                     
-                    # Chạy ByteTrack trực tiếp trên khung hình
+                    # Chạy Track từ Ultralytics YOLO
                     results = model.track(frame, persist=True, imgsz=img_size, conf=conf_threshold, tracker=tracker_config, verbose=False)
-                    annotated_frame = results[0].plot()
                     
-                    # Chuyển hệ màu để hiển thị chuẩn trên giao diện Web
+                    # Chuyển đổi kết quả sang Supervision Detections
+                    detections = sv.Detections.from_ultralytics(results[0])
+                    
+                    # Tạo bản sao của khung hình để vẽ
+                    annotated_frame = frame.copy()
+                    
+                    # KIỂM TRA VÀ XỬ LÝ TRACKING ID
+                    if detections.tracker_id is not None:
+                        # Lọc: Chỉ giữ lại các detection đã có ID hợp lệ để vẽ Trace và nhãn kèm ID
+                        # Tránh lỗi thiếu tracker_id ở các frame đầu hoặc khi vật thể mất dấu
+                        tracked_detections = detections[detections.tracker_id != None]
+                        
+                        # 1. Vẽ đường vết (Chỉ truyền tracked_detections đã được lọc)
+                        if len(tracked_detections) > 0:
+                            annotated_frame = trace_annotator.annotate(scene=annotated_frame, detections=tracked_detections)
+                        
+                        # 2. Tạo danh sách nhãn kèm ID cho các vật thể đang được track
+                        labels = []
+                        for class_id, tracker_id in zip(detections.class_id, detections.tracker_id):
+                            class_name = model.model.names[class_id]
+                            labels.append(f"#{tracker_id} {class_name}")
+                    else:
+                        # Nếu chưa có đối tượng nào được gán ID, nhãn chỉ hiển thị tên lớp
+                        labels = [model.model.names[class_id] for class_id in detections.class_id]
+
+                    # 3. Vẽ Bounding Box (áp dụng cho toàn bộ detections)
+                    annotated_frame = box_annotator.annotate(scene=annotated_frame, detections=detections)
+                    
+                    # 4. Vẽ Nhãn (Labels)
+                    annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
+                    
+                    # Chuyển hệ màu để hiển thị chuẩn trên giao diện Web (Streamlit)
                     annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                    frame_window.image(annotated_frame_rgb, channels="RGB", width="stretch")
-                
+                    frame_window.image(annotated_frame_rgb, channels="RGB")
+
+
+
                 cap.release()
                 st.success("🎉 Đã phát hết video!")
 
