@@ -32,41 +32,41 @@ else:
     # choose run mode
     run_mode = st.sidebar.radio(
         "🎯 Choose mode:",
-        ("Mode 1: Xem trực tiếp Stream", "Mode 2: Tải video kết quả về máy")
+        ("Mode 1: Stream", "Mode 2: Process and Download")
     )
     
-    # Thanh điều chỉnh tham số nâng cao
+    # Config bar
     st.sidebar.markdown("---")
-    st.sidebar.subheader("🎛️ Tham số thuật toán")
-    img_size = st.sidebar.slider("Kích thước ảnh (imgsz):", 512, 1024, 800, step=32)
-    conf_threshold = st.sidebar.slider("Ngưỡng tin cậy (Confidence):", 0.0, 1.0, 0.15, step=0.05)
+    st.sidebar.subheader("🎛️ Config")
+    img_size = st.sidebar.slider("Image size (imgsz):", 512, 1024, 800, step=32)
+    conf_threshold = st.sidebar.slider("Confidence:", 0.0, 1.0, 0.15, step=0.05)
 
-    # --- VÙNG TẢI VIDEO ---
-    uploaded_file = st.file_uploader("Tải video trận đấu của bạn lên (.mp4):", type=["mp4", "avi", "mov"])
+    # --- Load VIDEO ---
+    uploaded_file = st.file_uploader("Upload your match (.mp4):", type=["mp4", "avi", "mov"])
 
     if uploaded_file is not None:
-        # Tạo file tạm để lưu trữ video tải lên
+        # Create temp file
         tfile = tempfile.NamedTemporaryFile(delete=False) 
         tfile.write(uploaded_file.read())
         
-        # Kiểm tra file cấu hình ByteTrack tùy chỉnh (đã tạo ở bước trước)
+        # fast track 
         tracker_config = "fasttrack.yaml"
 
-        # --- XỬ LÝ CHẾ ĐỘ 1: WATCH LIVE STREAM ---
+        # --- Mode 1: WATCH LIVE STREAM ---
         if "Mode 1" in run_mode:
-            if st.button("🚀 Bắt đầu Stream trực tiếp"):
-                st.info("📺 Đang hiển thị luồng xử lý Real-time...")
+            if st.button("🚀 Start Stream"):
+                st.info("📺 Show processed video in Real-time...")
                 cap = cv2.VideoCapture(tfile.name)
                 
-                # Tạo khung trống để liên tục "bắn" ảnh vào
+                # image frame for simulate real-time stream 
                 frame_window = st.image([]) 
                 
            
 
-                # 1. Khởi tạo các annotator ngoài vòng lặp (để tối ưu hiệu năng)
+                # init annotator 
                 box_annotator = sv.EllipseAnnotator()
                 label_annotator = sv.LabelAnnotator(text_thickness=2, text_scale=0.3, text_position=sv.Position.BOTTOM_CENTER)
-                trace_annotator = sv.TraceAnnotator()  # Vẽ đường vết di chuyển của vật thể
+                trace_annotator = sv.TraceAnnotator()  # draw object trace
                
                 # ---------- UI ----------
                 possession_placeholder = st.empty()
@@ -85,10 +85,10 @@ else:
                     if not success:
                         break
                     
-                    # Chạy Track từ Ultralytics YOLO
+                    # Run Track form Ultralytics YOLO
                     results = model.track(frame, persist=True, imgsz=img_size, conf=conf_threshold, tracker=tracker_config, verbose=False)
                     
-                    # Chuyển đổi kết quả sang Supervision Detections
+                    # convert result to Supervision Detections
                     detections = sv.Detections.from_ultralytics(results[0])
 
                     player_boxes = []
@@ -143,53 +143,52 @@ else:
                         """,
                         unsafe_allow_html=True)
                     if owner == 0:
-                        possession_placeholder.success("⚽ Team A control balll")
+                        possession_placeholder.success("⚽ Team A control the ball")
 
                     elif owner == 1:
-                        possession_placeholder.success("⚽ Team B control ball")
+                        possession_placeholder.success("⚽ Team B control the ball")
 
                     else:
-                        possession_placeholder.info("⚽ unknow")
+                        possession_placeholder.info("⚽ Unknow")
 
-                    # Tạo bản sao của khung hình để vẽ
+                    # Create a copy to draw
                     annotated_frame = frame.copy()
                     
-                    # KIỂM TRA VÀ XỬ LÝ TRACKING ID
+                    # check and process TRACKING ID
                     if detections.tracker_id is not None:
-                        # Lọc: Chỉ giữ lại các detection đã có ID hợp lệ để vẽ Trace và nhãn kèm ID
-                        # Tránh lỗi thiếu tracker_id ở các frame đầu hoặc khi vật thể mất dấu
+                        # filter: only leave  valid ID detection to draw Trace and  ID label
                         tracked_detections = detections[detections.tracker_id != None]
                         
-                        # 1. Vẽ đường vết (Chỉ truyền tracked_detections đã được lọc)
+                        #  Draw trace (only tracked_detections have been filter)
                         if len(tracked_detections) > 0:
                             annotated_frame = trace_annotator.annotate(scene=annotated_frame, detections=tracked_detections)
                         
-                        # 2. Tạo danh sách nhãn kèm ID cho các vật thể đang được track
+                        #  Create label and ID for object currently track
                         labels = []
                         for class_id, tracker_id in zip(detections.class_id, detections.tracker_id):
                             class_name = model.model.names[class_id]
                             labels.append(f"#{tracker_id} {class_name}")
                     else:
-                        # Nếu chưa có đối tượng nào được gán ID, nhãn chỉ hiển thị tên lớp
+                        # if there no object have ID , label just display class
                         labels = [model.model.names[class_id] for class_id in detections.class_id]
 
-                    # 3. Vẽ Bounding Box (áp dụng cho toàn bộ detections)
+                    # Draw Bounding Box (apply for all detections)
                     annotated_frame = box_annotator.annotate(scene=annotated_frame, detections=detections)
                     
-                    # 4. Vẽ Nhãn (Labels)
+                    # draw Labels
                     annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
                     
-                    # Chuyển hệ màu để hiển thị chuẩn trên giao diện Web (Streamlit)
+                    # convert color for  Web UI (Streamlit)
                     annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                     frame_window.image(annotated_frame_rgb, channels="RGB")
 
                 cap.release()
-                st.success("🎉 Đã phát hết video!")
+                st.success("🎉 video end!")
 
-        # --- XỬ LÝ CHẾ ĐỘ 2: DOWNLOAD FILE ---
+        # --- mode 2: DOWNLOAD FILE ---
         elif "Mode 2" in run_mode:
-            if st.button("⚙️ Bắt đầu đóng gói video kết quả"):
-                st.info("⏳ Đang xử lý ngầm và lưu file... Vui lòng không tắt trình duyệt.")
+            if st.button("⚙️ Start process video"):
+                st.info("⏳ Processing... Please don't turn of browser.")
                 
                 cap = cv2.VideoCapture(tfile.name)
                 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -197,12 +196,12 @@ else:
                 fps = int(cap.get(cv2.CAP_PROP_FPS))
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 
-                # Định dạng file xuất ra
+                # fortmat output file
                 output_path = "football_tracked_download.mp4"
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
                 
-                # Tạo thanh tiến trình để người dùng dễ theo dõi
+                # create progress bar
                 progress_bar = st.progress(0)
                 frame_count = 0
                 
@@ -211,7 +210,7 @@ else:
                     if not success:
                         break
                     
-                    # Xử lý ngầm, không đẩy ảnh lên giao diện để tăng tốc độ ghi file
+                    # undergound processing
                     results = model.track(frame, persist=True, imgsz=img_size, conf=conf_threshold, tracker=tracker_config, verbose=False)
                     annotated_frame = results[0].plot()
                     out.write(annotated_frame)
@@ -222,16 +221,16 @@ else:
                 cap.release()
                 out.release()
                 
-                st.success("🎉 Đóng gói thành công! Bạn có thể tải file bên dưới:")
+                st.success("🎉 Successful! You can download file below:")
                 
-                # Hiển thị nút bấm Tải về khi quá trình ghi file kết thúc
+                # Display download button
                 with open(output_path, "rb") as file:
                     st.download_button(
-                        label="📥 BẤM VÀO ĐÂY ĐỂ TẢI VIDEO KẾT QUẢ (.MP4)",
+                        label="📥 CLICK HERE TO DOWNLOAD RESULT VIDEO  (.MP4)",
                         data=file,
                         file_name="football_tracked_result.mp4",
                         mime="video/mp4"
                     )
         
         else:
-            st.warning("⚠️ Vui lòng chọn chế độ xử lý trước khi bắt đầu!")
+            st.warning("⚠️ ERR: Please choose mode before start!")
