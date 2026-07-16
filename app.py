@@ -103,7 +103,7 @@ else:
                             player_colors.append(
                                 jersey_color(frame, x1, y1, x2, y2)
                             )
-                        elif class_name == "football":
+                        elif class_name in ["football", "ball"]:
                             ball_box = (x1, y1, x2, y2)
                     
                     team_ids, team_colors = team_tracker.assign(player_colors)
