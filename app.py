@@ -4,10 +4,12 @@ from ultralytics import YOLO
 import tempfile
 import os
 import supervision as sv
+from possession import PossessionTracker
+from team_classifier import TeamTracker, jersey_color
 
 # Configure the Streamlit page
 st.set_page_config(page_title="Football Tracking App", layout="wide", page_icon="⚽")
-st.title("⚽ Football YOLO26 and ByteTrack")
+st.title("⚽ Football YOLO26 and Track")
 st.sidebar.header("model configuration")
 
 # 1.  Model path
@@ -59,25 +61,25 @@ else:
                 # Tạo khung trống để liên tục "bắn" ảnh vào
                 frame_window = st.image([]) 
                 
-                # while cap.isOpened():
-                #     success, frame = cap.read()
-                #     if not success:
-                #         break
-                    
-                #     # Chạy ByteTrack trực tiếp trên khung hình
-                #     results = model.track(frame, persist=True, imgsz=img_size, conf=conf_threshold, tracker=tracker_config, verbose=False)
-                #     annotated_frame = results[0].plot()
-                    
-                #     # Chuyển hệ màu để hiển thị chuẩn trên giao diện Web
-                #     annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                #     frame_window.image(annotated_frame_rgb, channels="RGB", width="stretch")
-
+           
 
                 # 1. Khởi tạo các annotator ngoài vòng lặp (để tối ưu hiệu năng)
                 box_annotator = sv.EllipseAnnotator()
-                label_annotator = sv.LabelAnnotator(text_thickness=2, text_scale=0.3)
+                label_annotator = sv.LabelAnnotator(text_thickness=2, text_scale=0.3, text_position=sv.Position.BOTTOM_CENTER)
                 trace_annotator = sv.TraceAnnotator()  # Vẽ đường vết di chuyển của vật thể
+               
+                # ---------- UI ----------
+                possession_placeholder = st.empty()
 
+                col1, col2, col3 = st.columns([2, 6, 2])
+
+                teamA_metric = col1.empty()
+                bar_placeholder = col2.empty()
+                teamB_metric = col3.empty()
+
+                # ---------- Tracker ----------
+                team_tracker = TeamTracker()
+                possession_tracker = PossessionTracker()
                 while cap.isOpened():
                     success, frame = cap.read()
                     if not success:
@@ -88,7 +90,67 @@ else:
                     
                     # Chuyển đổi kết quả sang Supervision Detections
                     detections = sv.Detections.from_ultralytics(results[0])
+
+                    player_boxes = []
+                    player_colors = []
+                    ball_box = None
+
+                    for xyxy, class_id in zip(detections.xyxy, detections.class_id):
+                        class_name = model.model.names[class_id]
+                        x1, y1, x2, y2 = map(int, xyxy)
+                        if class_name == "player":
+                            player_boxes.append((x1, y1, x2, y2))
+                            player_colors.append(
+                                jersey_color(frame, x1, y1, x2, y2)
+                            )
+                        elif class_name == "football":
+                            ball_box = (x1, y1, x2, y2)
                     
+                    team_ids, team_colors = team_tracker.assign(player_colors)
+                    owner = possession_tracker.update(
+                        ball_box,
+                        player_boxes,
+                        team_ids
+                    )
+                    p0, p1 = possession_tracker.percentages()
+                    
+                    teamA_metric.metric("🔵 Team A", f"{p0:.1f}%")
+                    teamB_metric.metric("🔴 Team B", f"{p1:.1f}%")
+                    bar_placeholder.markdown(f"""
+                        <div style="display:flex;width:100%;height:30px;border-radius:8px;overflow:hidden">
+
+                        <div style="
+                        width:{p0}%;
+                        background:#2196F3;
+                        color:white;
+                        text-align:center;
+                        font-weight:bold;
+                        line-height:30px;">
+                        {p0:.1f}%
+                        </div>
+
+                        <div style="
+                        width:{p1}%;
+                        background:#F44336;
+                        color:white;
+                        text-align:center;
+                        font-weight:bold;
+                        line-height:30px;">
+                        {p1:.1f}%
+                        </div>
+
+                        </div>
+                        """,
+                        unsafe_allow_html=True)
+                    if owner == 0:
+                        possession_placeholder.success("⚽ Team A control balll")
+
+                    elif owner == 1:
+                        possession_placeholder.success("⚽ Team B control ball")
+
+                    else:
+                        possession_placeholder.info("⚽ unknow")
+
                     # Tạo bản sao của khung hình để vẽ
                     annotated_frame = frame.copy()
                     
@@ -120,8 +182,6 @@ else:
                     # Chuyển hệ màu để hiển thị chuẩn trên giao diện Web (Streamlit)
                     annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                     frame_window.image(annotated_frame_rgb, channels="RGB")
-
-
 
                 cap.release()
                 st.success("🎉 Đã phát hết video!")
