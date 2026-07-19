@@ -10,7 +10,7 @@ from fall_detector import FallDetector
 
 # Configure the Streamlit page
 st.set_page_config(page_title="Football Tracking App", layout="wide", page_icon="⚽")
-st.title("⚽ Football YOLO26 and Track")
+st.title("⚽ Football Tracking App")
 st.sidebar.header("model configuration")
 
 # 1.  Model path
