@@ -6,6 +6,7 @@ import os
 import supervision as sv
 from possession import PossessionTracker
 from team_classifier import TeamTracker, jersey_color
+from fall_detector import FallDetector
 
 # Configure the Streamlit page
 st.set_page_config(page_title="Football Tracking App", layout="wide", page_icon="⚽")
@@ -80,6 +81,8 @@ else:
                 # ---------- Tracker ----------
                 team_tracker = TeamTracker()
                 possession_tracker = PossessionTracker()
+                fall_detector = FallDetector(ratio_threshold=1.2, min_frames=5)
+
                 while cap.isOpened():
                     success, frame = cap.read()
                     if not success:
@@ -95,10 +98,28 @@ else:
                     player_colors = []
                     ball_box = None
 
-                    for xyxy, class_id in zip(detections.xyxy, detections.class_id):
+                    for idx, (xyxy, class_id)  in enumerate(zip(detections.xyxy, detections.class_id)):
+                        tracker_id = None
+                        if detections.tracker_id is not None and idx < len(detections.tracker_id):
+                            tracker_id = detections.tracker_id[idx]
+                        
                         class_name = model.model.names[class_id]
                         x1, y1, x2, y2 = map(int, xyxy)
                         if class_name == "player":
+                            box = (x1, y1, x2, y2)
+
+                            if tracker_id is not None:
+                                if fall_detector.update(int(tracker_id), box):
+                                    cv2.putText(
+                                        frame,
+                                        "FALL DETECTED",
+                                        (x1, max(0, y1 - 10)),
+                                        cv2.FONT_HERSHEY_SIMPLEX,
+                                        0.7,
+                                        (0, 0, 255),
+                                        2
+                                    )
+
                             player_boxes.append((x1, y1, x2, y2))
                             player_colors.append(
                                 jersey_color(frame, x1, y1, x2, y2)
