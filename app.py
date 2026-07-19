@@ -66,8 +66,7 @@ else:
 
                 # init annotator 
                 box_annotator = sv.EllipseAnnotator()
-                label_annotator = sv.LabelAnnotator(text_thickness=2, text_scale=0.3, text_position=sv.Position.BOTTOM_CENTER)
-                trace_annotator = sv.TraceAnnotator()  # draw object trace
+                label_annotator = sv.LabelAnnotator(text_thickness=5, text_scale=0.6, text_position=sv.Position.TOP_CENTER)
                
                 # ---------- UI ----------
                 possession_placeholder = st.empty()
@@ -97,6 +96,7 @@ else:
                     player_boxes = []
                     player_colors = []
                     ball_box = None
+                    fall_flags = [False] * len(detections.class_id)
 
                     for idx, (xyxy, class_id)  in enumerate(zip(detections.xyxy, detections.class_id)):
                         tracker_id = None
@@ -110,15 +110,7 @@ else:
 
                             if tracker_id is not None:
                                 if fall_detector.update(int(tracker_id), box):
-                                    cv2.putText(
-                                        frame,
-                                        "FALL DETECTED",
-                                        (x1, max(0, y1 - 10)),
-                                        cv2.FONT_HERSHEY_SIMPLEX,
-                                        0.7,
-                                        (0, 0, 255),
-                                        2
-                                    )
+                                    fall_flags[idx] = True
 
                             player_boxes.append((x1, y1, x2, y2))
                             player_colors.append(
@@ -179,16 +171,15 @@ else:
                     if detections.tracker_id is not None:
                         # filter: only leave  valid ID detection to draw Trace and  ID label
                         tracked_detections = detections[detections.tracker_id != None]
-                        
-                        #  Draw trace (only tracked_detections have been filter)
-                        if len(tracked_detections) > 0:
-                            annotated_frame = trace_annotator.annotate(scene=annotated_frame, detections=tracked_detections)
-                        
+                                                
                         #  Create label and ID for object currently track
                         labels = []
-                        for class_id, tracker_id in zip(detections.class_id, detections.tracker_id):
+                        for i, class_id in enumerate(detections.class_id):
                             class_name = model.model.names[class_id]
-                            labels.append(f"#{tracker_id} {class_name}")
+                            if fall_flags[i]:
+                                labels.append("FALL DETECTED")
+                            else:
+                                labels.append(f"#{tracker_id} {class_name[:3].upper()}")
                     else:
                         # if there no object have ID , label just display class
                         labels = [model.model.names[class_id] for class_id in detections.class_id]
