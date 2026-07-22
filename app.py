@@ -14,8 +14,8 @@ st.title("⚽ Football Tracking App")
 st.sidebar.header("model configuration")
 
 # 1.  Model path
-model_path = st.sidebar.text_input("Path file Best.pt:", "custom_model/train/weights/best.pt")
-
+# model_path = st.sidebar.text_input("Path file Best.pt:", "custom_model/train/weights/best.pt")
+model_path = "custom_model/train/weights/best.pt"
 # initialize the model
 @st.cache_resource
 def load_model(path):
