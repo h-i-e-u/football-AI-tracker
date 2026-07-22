@@ -1,37 +1,57 @@
 import streamlit as st
 import cv2
+import os
 from ultralytics import YOLO
 import tempfile
-import os
 import supervision as sv
 from possession import PossessionTracker
 from team_classifier import TeamTracker, jersey_color
 from fall_detector import FallDetector
+from huggingface_hub import hf_hub_download
 
 # Configure the Streamlit page
 st.set_page_config(page_title="Football Tracking", layout="wide", page_icon="⚽")
-st.title("⚽ Football Tracking App")
+st.title("⚽ Football Tracking")
 st.markdown("""
     Detect and Track Football, Players, Referees, Possession, and Fall Events.
 """)
 st.sidebar.header("model configuration")
 
-# 1.  Model path
-# model_path = st.sidebar.text_input("Path file Best.pt:", "custom_model/train/weights/best.pt")
-model_path = "custom_model/train/weights/best.pt"
-# initialize the model
+# --- Model Loading Logic ---
 @st.cache_resource
-def load_model(path):
-    if os.path.exists(path):
-        return YOLO(path)
-    return None
+def load_model():
+    # Kiểm tra environment
+    env = os.getenv("ENV", "production").lower()
+    local_model_path = "custom_model/train/weights/best.pt"
+    
+    # Load local model if in dev mode or if the local model exists
+    if env == "dev" or os.path.exists(local_model_path):
+        if os.path.exists(local_model_path):
+            st.sidebar.info(f"📂 Loading local model: {local_model_path}")
+            return YOLO(local_model_path)
+        else:
+            st.sidebar.warning("⚠️ Dev mode but local model not found!")
+    
+    # Load Hugging face 
+    try:
+        st.sidebar.info("☁️ Loading model from Hugging Face...")
+        model_id = "h-i-e-u/football-yolo-tracker-26"  
+        model_path = hf_hub_download(
+            repo_id=model_id,
+            filename="weights/best.pt",
+            cache_dir="./models"
+        )
+        return YOLO(model_path)
+    except Exception as e:
+        st.error(f"❌ Error loading model: {e}")
+        return None
 
-model = load_model(model_path)
+model = load_model()
 
 if model is None:
-    st.error(f"❌ Model not found: {model_path}. check the path!")
+    st.error("❌ Model not found!")
 else:
-    st.sidebar.success("⚡ Load model sucessfully!")
+    st.sidebar.success("⚡ Load model successfully!")
     
     # choose run mode
     run_mode = st.sidebar.radio(
