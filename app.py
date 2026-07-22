@@ -65,8 +65,13 @@ else:
            
 
                 # init annotator 
-                box_annotator = sv.EllipseAnnotator()
-                label_annotator = sv.LabelAnnotator(text_thickness=5, text_scale=0.6, text_position=sv.Position.TOP_CENTER)
+                box_annotator = sv.EllipseAnnotator(sv.Color.ROBOFLOW)
+                referee_box_annotator = sv.EllipseAnnotator(color=sv.Color.from_hex("#F6FF00"), thickness=2)
+                label_annotator_ref = sv.LabelAnnotator(text_thickness=5, text_scale=0.6, text_position=sv.Position.TOP_CENTER,  text_color=sv.Color.from_hex("#000000"), color=sv.Color.from_hex("#F6FF00"))
+                fall_box_annotator = sv.BoxAnnotator(color=sv.Color.from_hex("#FF8000"), thickness=3)
+                label_annotator_fall = sv.LabelAnnotator(text_thickness=5, text_scale=0.6, text_position=sv.Position.TOP_CENTER,  text_color=sv.Color.from_hex("#FFFFFF"), color=sv.Color.from_hex("#FF8000"))
+                label_annotator_team_a = sv.LabelAnnotator(text_thickness=5, text_scale=0.6, text_position=sv.Position.TOP_CENTER,  text_color=sv.Color.from_hex("#FFFFFF"), color=sv.Color.from_hex("#2196F3"))
+                label_annotator_team_b = sv.LabelAnnotator(text_thickness=5, text_scale=0.6, text_position=sv.Position.TOP_CENTER,  text_color=sv.Color.from_hex("#FFFFFF"), color=sv.Color.from_hex("#F44336"))
                
                 # ---------- UI ----------
                 possession_placeholder = st.empty()
@@ -80,7 +85,7 @@ else:
                 # ---------- Tracker ----------
                 team_tracker = TeamTracker()
                 possession_tracker = PossessionTracker()
-                fall_detector = FallDetector(ratio_threshold=1.2, min_frames=5)
+                fall_detector = FallDetector(ratio_threshold=1.0, min_frames=5)
 
                 while cap.isOpened():
                     success, frame = cap.read()
@@ -98,14 +103,24 @@ else:
                     ball_box = None
                     fall_flags = [False] * len(detections.class_id)
 
-                    for idx, (xyxy, class_id)  in enumerate(zip(detections.xyxy, detections.class_id)):
+                    player_indices = []
+                    referee_indices = []
+                    referee_labels = []
+
+                    for idx, (xyxy, class_id) in enumerate(zip(detections.xyxy, detections.class_id)):
                         tracker_id = None
                         if detections.tracker_id is not None and idx < len(detections.tracker_id):
                             tracker_id = detections.tracker_id[idx]
-                        
+
                         class_name = model.model.names[class_id]
+                        class_name_lower = class_name.lower()
                         x1, y1, x2, y2 = map(int, xyxy)
-                        if class_name == "player":
+
+                        if class_name_lower in ["referee", "assistant referee", "assistant_referee", "ref"]:
+                            referee_indices.append(idx)
+                            referee_labels.append(f"REF #{tracker_id}" if tracker_id is not None else "REF")
+
+                        elif class_name in ["player", "goalkeeper"]:
                             box = (x1, y1, x2, y2)
 
                             if tracker_id is not None:
@@ -113,18 +128,50 @@ else:
                                     fall_flags[idx] = True
 
                             player_boxes.append((x1, y1, x2, y2))
-                            player_colors.append(
-                                jersey_color(frame, x1, y1, x2, y2)
-                            )
+                            player_colors.append(jersey_color(frame, x1, y1, x2, y2))
+                            player_indices.append(idx)
+
                         elif class_name in ["football", "ball"]:
                             ball_box = (x1, y1, x2, y2)
                     
                     team_ids, team_colors = team_tracker.assign(player_colors)
+
+                    team_id_by_detection = {}
+                    for det_idx, team_id in zip(player_indices, team_ids):
+                        team_id_by_detection[det_idx] = team_id
+
+                    team_a_indices = [i for i, team_id in team_id_by_detection.items() if team_id == 0]
+                    team_b_indices = [i for i, team_id in team_id_by_detection.items() if team_id == 1]
+
+                    team_a_labels = []
+                    for i in team_a_indices:
+                        tracker_id = None
+                        if detections.tracker_id is not None and i < len(detections.tracker_id):
+                            tracker_id = detections.tracker_id[i]
+                        team_a_labels.append(f"#{tracker_id} A" if tracker_id is not None else "A")
+
+                    team_b_labels = []
+                    for i in team_b_indices:
+                        tracker_id = None
+                        if detections.tracker_id is not None and i < len(detections.tracker_id):
+                            tracker_id = detections.tracker_id[i]
+                        team_b_labels.append(f"#{tracker_id} B" if tracker_id is not None else "B")
+
+                    #
+                    fall_indices = [i for i, flag in enumerate(fall_flags) if flag]
+                    fall_labels = []
+                    
+                    for i in fall_indices:
+                        tracker_id = None
+                        if detections.tracker_id is not None and i < len(detections.tracker_id):
+                            tracker_id = detections.tracker_id[i]
+                        fall_labels.append(f"FALL #{tracker_id}" if tracker_id is not None else "FALL")
                     owner = possession_tracker.update(
                         ball_box,
                         player_boxes,
                         team_ids
                     )
+
                     p0, p1 = possession_tracker.percentages()
                     
                     teamA_metric.metric("🔵 Team A", f"{p0:.1f}%")
@@ -186,10 +233,39 @@ else:
 
                     # Draw Bounding Box (apply for all detections)
                     annotated_frame = box_annotator.annotate(scene=annotated_frame, detections=detections)
-                    
-                    # draw Labels
-                    annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
-                    
+
+                    # draw labels for each team separately
+                    if team_a_indices:
+                        annotated_frame = label_annotator_team_a.annotate(
+                            scene=annotated_frame,
+                            detections=detections[team_a_indices],
+                            labels=team_a_labels
+                        )
+
+                    if team_b_indices:
+                        annotated_frame = label_annotator_team_b.annotate(
+                            scene=annotated_frame,
+                            detections=detections[team_b_indices],
+                            labels=team_b_labels
+                        )
+                    if fall_indices:
+                        fall_detections = detections[fall_indices]
+                        annotated_frame = fall_box_annotator.annotate(scene=annotated_frame, detections=fall_detections)
+                        annotated_frame = label_annotator_fall.annotate(
+                            scene=annotated_frame,
+                            detections=fall_detections,
+                            labels=fall_labels
+                        )
+
+                    if referee_indices:
+                        referee_detections = detections[referee_indices]
+                        annotated_frame = referee_box_annotator.annotate(scene=annotated_frame, detections=referee_detections)
+                        annotated_frame = label_annotator_ref.annotate(
+                            scene=annotated_frame,
+                            detections=referee_detections,
+                            labels=referee_labels
+                        )
+
                     # convert color for  Web UI (Streamlit)
                     annotated_frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                     frame_window.image(annotated_frame_rgb, channels="RGB")
@@ -208,7 +284,7 @@ else:
                 fps = int(cap.get(cv2.CAP_PROP_FPS))
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 
-                # fortmat output file
+                # format output file
                 output_path = "football_tracked_download.mp4"
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
