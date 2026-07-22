@@ -56,7 +56,7 @@ else:
     # choose run mode
     run_mode = st.sidebar.radio(
         "🎯 Choose mode:",
-        ("Mode 1: Stream", "Mode 2: Process and Download")
+        ("Mode 1: Stream", "Mode 2: Process and Download"), 1
     )
     
     # Config bar
