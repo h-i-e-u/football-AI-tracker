@@ -9,8 +9,11 @@ from team_classifier import TeamTracker, jersey_color
 from fall_detector import FallDetector
 
 # Configure the Streamlit page
-st.set_page_config(page_title="Football Tracking App", layout="wide", page_icon="⚽")
+st.set_page_config(page_title="Football Tracking", layout="wide", page_icon="⚽")
 st.title("⚽ Football Tracking App")
+st.markdown("""
+    Detect and Track Football, Players, Referees, Possession, and Fall Events.
+""")
 st.sidebar.header("model configuration")
 
 # 1.  Model path
