@@ -21,7 +21,7 @@ st.sidebar.header("model configuration")
 # --- Model Loading Logic ---
 @st.cache_resource
 def load_model():
-    # Kiểm tra environment
+    # get environment
     env = os.getenv("ENV", "production").lower()
     local_model_path = "custom_model/train/weights/best.pt"
     
@@ -66,22 +66,52 @@ else:
     img_size = st.sidebar.slider("Image size (imgsz):", 512, 1024, 800, step=32)
     conf_threshold = st.sidebar.slider("Confidence:", 0.0, 1.0, 0.15, step=0.05)
 
-    # --- Load VIDEO ---
-    uploaded_file = st.file_uploader("Upload your match (.mp4):", type=["mp4", "avi", "mov"])
+    # init video path
+    if "video_path" not in st.session_state:
+        st.session_state.video_path = None
+
+    sample_video_path = "videos/sample-video.mp4"
+    # Load VIDEO 
+    col_upload, col_sample = st.columns([6,1], vertical_alignment="bottom")
+    with col_upload:
+        uploaded_file = st.file_uploader(
+            "Upload your match (.mp4):",
+            type=["mp4", "avi", "mov"],
+            key="file_uploader_key",
+        )
+
+    with col_sample:
+        is_using_sample = (
+            st.session_state.get("video_path") == sample_video_path
+            and uploaded_file is None
+        )
+
+        btn_type = "primary" if is_using_sample else "secondary"
+        btn_label = "Using Sample" if is_using_sample else "Use Sample"
+
+        if st.button(btn_label, type=btn_type, width="content"):
+            if os.path.exists(sample_video_path):
+                st.session_state.video_path = sample_video_path
+                st.rerun()  
+            else:
+                st.error("❌ Sample file not found!")
+
+    # fast track and video path
+    tracker_config = "fasttrack.yaml"
 
     if uploaded_file is not None:
         # Create temp file
         tfile = tempfile.NamedTemporaryFile(delete=False) 
         tfile.write(uploaded_file.read())
-        
-        # fast track 
-        tracker_config = "fasttrack.yaml"
-
+        tfile.close()
+        st.session_state.video_path = tfile.name
+     
+    if st.session_state.video_path:
         # --- Mode 1: WATCH LIVE STREAM ---
         if "Mode 1" in run_mode:
             if st.button("🚀 Start Stream"):
                 st.info("📺 Show processed video in Real-time...")
-                cap = cv2.VideoCapture(tfile.name)
+                cap = cv2.VideoCapture(st.session_state.video_path)
                 
                 # image frame for simulate real-time stream 
                 frame_window = st.image([]) 
@@ -302,7 +332,7 @@ else:
             if st.button("⚙️ Start process video"):
                 st.info("⏳ Processing... Please don't turn of browser.")
                 
-                cap = cv2.VideoCapture(tfile.name)
+                cap = cv2.VideoCapture(st.session_state.video_path)
                 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 fps = int(cap.get(cv2.CAP_PROP_FPS))

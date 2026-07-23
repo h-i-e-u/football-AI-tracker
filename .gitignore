@@ -1,6 +1,8 @@
 # video files
 *.mp4
 
+!sample-video.mp4
+
 # images fliles
 *.jpg
 *.png
@@ -59,3 +61,5 @@ MANIFEST
 *.njsproj
 *.sln
 *.swp
+
+
