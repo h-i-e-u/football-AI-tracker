@@ -2,6 +2,8 @@
 
 This project is a football video analytics application that uses YOLO for player and ball detection, tracking, team classification based on jersey color, possession estimation, and fall detection.
 
+![gif_result](./videos/result.gif)
+
 ## Overview
 
 The project includes:
