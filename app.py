@@ -309,14 +309,14 @@ else:
                 
                 # format output file
                 output_path = "football_tracked_download.mp4"
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                fourcc = cv2.VideoWriter_fourcc(*'avc1')
                 out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
                 
                 # create progress bar
                 progress_bar = st.progress(0)
                 frame_count = 0
                 
-                # --- Init annotators (same as Mode 1) ---
+                # --- Init annotators ---
                 box_annotator = sv.EllipseAnnotator(sv.Color.ROBOFLOW)
                 referee_box_annotator = sv.EllipseAnnotator(color=sv.Color.from_hex("#F6FF00"), thickness=2)
                 label_annotator_ref = sv.LabelAnnotator(text_thickness=5, text_scale=0.6, text_position=sv.Position.TOP_CENTER,  text_color=sv.Color.from_hex("#000000"), color=sv.Color.from_hex("#F6FF00"))
@@ -454,18 +454,25 @@ else:
                     
                     cap.release()
                     out.release()
-                    
-                    st.success("🎉 Successful! You can download file below:")
-                    
-                    # Display download button
-                    with open(output_path, "rb") as file:
-                        st.download_button(
-                            label="📥 CLICK HERE TO DOWNLOAD RESULT VIDEO  (.MP4)",
-                            data=file,
-                            file_name="football_tracked_result.mp4",
-                            mime="video/mp4"
-                        )
-                
+
+                    # Display video
+                    if os.path.exists(output_path):
+                        st.success("🎉 Done!. YOU CAN WATch VIDEO BELOW:")
+                        with open(output_path, "rb") as video_file:
+                            video_bytes = video_file.read()
+                            st.video(video_bytes, format="video/mp4", autoplay=True) 
+
+                        # Display download button
+                        with open(output_path, "rb") as file:
+                            st.download_button(
+                                label="📥 CLICK HERE TO DOWNLOAD RESULT VIDEO  (.MP4)",
+                                data=file,
+                                file_name="football_tracked_result.mp4",
+                                mime="video/mp4"
+                            )
+                    else:
+                        st.error("Video not init yet.")
+                                    
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
                     cap.release()
