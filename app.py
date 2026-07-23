@@ -8,6 +8,7 @@ from possession import PossessionTracker
 from team_classifier import TeamTracker, jersey_color
 from fall_detector import FallDetector
 from huggingface_hub import hf_hub_download
+import av
 
 # Configure the Streamlit page
 st.set_page_config(page_title="Football Tracking", layout="wide", page_icon="⚽")
@@ -308,9 +309,12 @@ else:
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 
                 # format output file
-                output_path = "football_tracked_download.mp4"
-                fourcc = cv2.VideoWriter_fourcc(*'avc1')
-                out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+                output_path = os.path.abspath("football_tracked_download.mp4")
+                container = av.open(output_path, mode="w")
+                stream = container.add_stream("h264", rate=fps)
+                stream.width = width
+                stream.height = height
+                stream.pix_fmt = "yuv420p"
                 
                 # create progress bar
                 progress_bar = st.progress(0)
@@ -447,13 +451,17 @@ else:
                                 labels=referee_labels
                             )
                         
-                        out.write(annotated_frame)
+                        frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                        img = av.VideoFrame.from_ndarray(frame, format="rgb24")
+                        packet = stream.encode(img)
+                        if packet:
+                            container.mux(packet)
                         
                         frame_count += 1
                         progress_bar.progress(int((frame_count / total_frames) * 100))
                     
                     cap.release()
-                    out.release()
+                    container.close()
 
                     # Display video
                     if os.path.exists(output_path):
@@ -476,7 +484,7 @@ else:
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
                     cap.release()
-                    out.release()
+                    container.close()
         
         else:
             st.warning("⚠️ ERR: Please choose mode before start!")
